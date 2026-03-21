@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RecallCam Prototype</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="camera-stage">
+        <div class="stage-header">
+          <div>
+            <p class="eyebrow">Hackathon Prototype</p>
+            <h1>RecallCam</h1>
+          </div>
+          <div class="status-cluster">
+            <span id="camera-status" class="status-pill status-waiting">Camera offline</span>
+            <span id="speech-status" class="status-pill status-waiting">Speech idle</span>
+          </div>
+        </div>
+
+        <div class="camera-frame">
+          <video id="camera" autoplay playsinline muted></video>
+          <canvas id="overlay"></canvas>
+          <canvas id="face-capture" class="hidden-canvas"></canvas>
+
+          <div class="overlay-panel top-left">
+            <p class="panel-label">Live Match</p>
+            <h2 id="profile-name">Waiting for a face...</h2>
+            <p id="profile-summary">When someone steps into frame, their remembered details will appear here.</p>
+          </div>
+
+          <div class="overlay-panel bottom-left transcript-panel">
+            <p class="panel-label">Live Transcript</p>
+            <p id="transcript-output">Press Start Listening and say a few facts like your name, role, interests, or project goals.</p>
+          </div>
+        </div>
+
+        <div class="control-bar">
+          <button id="start-camera">Start Camera</button>
+          <button id="toggle-listening" disabled>Start Listening</button>
+          <button id="save-profile" disabled>Save Snapshot</button>
+          <button id="reset-memory" class="button-ghost">Reset Memory</button>
+        </div>
+
+        <p id="feature-warning" class="feature-warning"></p>
+      </section>
+
+      <aside class="memory-panel">
+        <div class="memory-header">
+          <p class="eyebrow">Persistent Memory</p>
+          <h2>What RecallCam knows</h2>
+          <p>
+            The app stores lightweight face fingerprints and extracted facts in
+            this browser only.
+          </p>
+        </div>
+
+        <section class="memory-card">
+          <p class="card-label">Current Person</p>
+          <div class="fact-grid">
+            <div>
+              <span class="fact-label">Name</span>
+              <span id="fact-name">Unknown</span>
+            </div>
+            <div>
+              <span class="fact-label">Role</span>
+              <span id="fact-role">-</span>
+            </div>
+            <div>
+              <span class="fact-label">Company</span>
+              <span id="fact-company">-</span>
+            </div>
+            <div>
+              <span class="fact-label">Interests</span>
+              <span id="fact-interests">-</span>
+            </div>
+            <div>
+              <span class="fact-label">Goals</span>
+              <span id="fact-goals">-</span>
+            </div>
+            <div>
+              <span class="fact-label">Last Seen</span>
+              <span id="fact-last-seen">-</span>
+            </div>
+          </div>
+          <div class="notes-block">
+            <span class="fact-label">Notes</span>
+            <p id="fact-notes">No notes yet.</p>
+          </div>
+        </section>
+
+        <section class="memory-card">
+          <p class="card-label">Known Profiles</p>
+          <div id="known-profiles" class="known-profiles"></div>
+        </section>
+      </aside>
+    </main>
+
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>
