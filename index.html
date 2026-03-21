@@ -31,6 +31,17 @@
           <canvas id="overlay"></canvas>
           <canvas id="face-capture" class="hidden-canvas"></canvas>
 
+          <div id="face-hud" class="face-hud face-hud-hidden" aria-live="polite">
+            <p id="hud-state" class="panel-label">Tracking idle</p>
+            <h3 id="hud-name">No face detected</h3>
+            <p id="hud-relationship" class="hud-meta">Relationship: -</p>
+            <p id="hud-note" class="hud-note">Helpful note: -</p>
+            <div class="hud-chip-row">
+              <span id="hud-movement" class="memory-chip">Movement: still</span>
+              <span id="hud-confidence" class="memory-chip">Confidence: -</span>
+            </div>
+          </div>
+
           <div class="overlay-panel top-left">
             <p id="recognition-state" class="panel-label">System idle</p>
             <h2 id="profile-name">Waiting for a face...</h2>

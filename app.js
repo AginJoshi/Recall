@@ -1,6 +1,14 @@
+import { detectFace, isFaceDetectionSupported } from "./src/cv/faceDetection.js";
+import { createFaceFingerprint } from "./src/cv/faceFingerprint.js";
+import {
+  DEFAULT_FACE_MATCH_THRESHOLD,
+  descriptorDistance,
+  matchFace,
+} from "./src/cv/faceMatcher.js";
+
 const STORAGE_KEY = "recallcam-profiles-v2";
-const FACE_MATCH_THRESHOLD = 0.18;
-const DETECTION_INTERVAL_MS = 1200;
+const DETECTION_INTERVAL_MS = 280;
+const TRACKING_SMOOTHING = 0.45;
 
 const RELATIONSHIP_TERMS = [
   "daughter",
@@ -30,6 +38,13 @@ const elements = {
   video: document.getElementById("camera"),
   overlay: document.getElementById("overlay"),
   faceCapture: document.getElementById("face-capture"),
+  faceHud: document.getElementById("face-hud"),
+  hudState: document.getElementById("hud-state"),
+  hudName: document.getElementById("hud-name"),
+  hudRelationship: document.getElementById("hud-relationship"),
+  hudNote: document.getElementById("hud-note"),
+  hudMovement: document.getElementById("hud-movement"),
+  hudConfidence: document.getElementById("hud-confidence"),
   cameraStatus: document.getElementById("camera-status"),
   speechStatus: document.getElementById("speech-status"),
   recognitionState: document.getElementById("recognition-state"),
@@ -56,7 +71,6 @@ const state = {
   isListening: false,
   recognition: null,
   transcript: "",
-  detector: null,
   detectTimer: null,
   profileStore: loadProfiles(),
   activeProfile: null,
@@ -64,6 +78,9 @@ const state = {
   activeProfileState: "idle",
   lastDescriptor: null,
   lastFaceBox: null,
+  previousFaceBox: null,
+  trackedFaceBox: null,
+  movementLabel: "still",
 };
 
 function loadProfiles() {
@@ -173,6 +190,7 @@ function escapeHtml(value) {
 
 function renderProfile(profile) {
   elements.recognitionState.textContent = formatRecognitionState();
+  renderFaceHud(profile);
 
   if (!profile) {
     elements.profileName.textContent = state.activeProfileState === "no-face" ? "No face in frame" : "Waiting for a face...";
@@ -202,6 +220,103 @@ function renderProfile(profile) {
   elements.saveProfile.disabled = !state.lastDescriptor;
 }
 
+function renderFaceHud(profile) {
+  const hud = elements.faceHud;
+  if (!state.trackedFaceBox) {
+    hud.classList.add("face-hud-hidden");
+    hud.classList.remove("face-hud-visible");
+    elements.hudState.textContent = "Tracking idle";
+    elements.hudName.textContent = "No face detected";
+    elements.hudRelationship.textContent = "Relationship: -";
+    elements.hudNote.textContent = "Helpful note: -";
+    elements.hudMovement.textContent = "Movement: still";
+    elements.hudConfidence.textContent = "Confidence: -";
+    return;
+  }
+
+  hud.classList.remove("face-hud-hidden");
+  hud.classList.add("face-hud-visible");
+  elements.hudState.textContent =
+    state.activeProfileState === "recognized" ? "Tracking recognized face" : "Tracking new face";
+  elements.hudName.textContent =
+    state.activeProfileState === "recognized"
+      ? profile?.name || "Recognized person"
+      : profile?.name || "New person detected";
+  elements.hudRelationship.textContent = `Relationship: ${profile?.relationship || "-"}`;
+  elements.hudNote.textContent = `Helpful note: ${profile?.note || profile?.lastInteraction || "-"}`;
+  elements.hudMovement.textContent = `Movement: ${state.movementLabel}`;
+  elements.hudConfidence.textContent =
+    state.activeProfileState === "recognized" && state.activeMatchConfidence !== null
+      ? `Confidence: ${(state.activeMatchConfidence * 100).toFixed(0)}%`
+      : "Confidence: low / new";
+
+  positionFaceHud(state.trackedFaceBox);
+}
+
+function positionFaceHud(box) {
+  const frame = elements.video.parentElement;
+  if (!frame || !box || !elements.video.videoWidth || !elements.video.videoHeight) return;
+
+  const scaleX = frame.clientWidth / elements.video.videoWidth;
+  const scaleY = frame.clientHeight / elements.video.videoHeight;
+  const hudWidth = elements.faceHud.offsetWidth || 280;
+  const left = Math.min(
+    Math.max(12, box.x * scaleX),
+    Math.max(12, frame.clientWidth - hudWidth - 12)
+  );
+  const top = Math.max(12, box.y * scaleY + box.height * scaleY + 14);
+  const boundedTop = Math.min(top, Math.max(12, frame.clientHeight - 140));
+  elements.faceHud.style.transform = `translate3d(${left}px, ${boundedTop}px, 0)`;
+}
+
+function smoothFaceBox(nextBox) {
+  if (!nextBox) {
+    state.previousFaceBox = state.trackedFaceBox;
+    state.trackedFaceBox = null;
+    state.movementLabel = "still";
+    return;
+  }
+
+  if (!state.trackedFaceBox) {
+    state.previousFaceBox = nextBox;
+    state.trackedFaceBox = { ...nextBox };
+    state.movementLabel = "arrived";
+    return;
+  }
+
+  const smoothed = {
+    x: state.trackedFaceBox.x + (nextBox.x - state.trackedFaceBox.x) * TRACKING_SMOOTHING,
+    y: state.trackedFaceBox.y + (nextBox.y - state.trackedFaceBox.y) * TRACKING_SMOOTHING,
+    width:
+      state.trackedFaceBox.width +
+      (nextBox.width - state.trackedFaceBox.width) * TRACKING_SMOOTHING,
+    height:
+      state.trackedFaceBox.height +
+      (nextBox.height - state.trackedFaceBox.height) * TRACKING_SMOOTHING,
+  };
+
+  const previousCenter = getBoxCenter(state.trackedFaceBox);
+  const nextCenter = getBoxCenter(nextBox);
+  state.previousFaceBox = state.trackedFaceBox;
+  state.trackedFaceBox = smoothed;
+  state.movementLabel = getMovementLabel(nextCenter.x - previousCenter.x, nextCenter.y - previousCenter.y);
+}
+
+function getBoxCenter(box) {
+  return {
+    x: box.x + box.width / 2,
+    y: box.y + box.height / 2,
+  };
+}
+
+function getMovementLabel(deltaX, deltaY) {
+  const absX = Math.abs(deltaX);
+  const absY = Math.abs(deltaY);
+  if (absX < 6 && absY < 6) return "still";
+  if (absX > absY) return deltaX > 0 ? "moving right" : "moving left";
+  return deltaY > 0 ? "moving down" : "moving up";
+}
+
 function drawOverlay() {
   const { overlay, video } = elements;
   const ctx = overlay.getContext("2d");
@@ -209,9 +324,9 @@ function drawOverlay() {
   overlay.height = video.videoHeight || overlay.clientHeight;
   ctx.clearRect(0, 0, overlay.width, overlay.height);
 
-  if (!state.lastFaceBox) return;
+  if (!state.trackedFaceBox) return;
 
-  const { x, y, width, height } = state.lastFaceBox;
+  const { x, y, width, height } = state.trackedFaceBox;
   const isRecognized = state.activeProfileState === "recognized";
   ctx.lineWidth = 4;
   ctx.strokeStyle = isRecognized ? "#7df9c7" : "#ffc76f";
@@ -227,17 +342,10 @@ function drawOverlay() {
   ctx.fillStyle = "#eff6ff";
   ctx.font = "16px IBM Plex Mono";
   ctx.fillText(label, x + 10, Math.max(18, y - 14));
-}
 
-function createFaceDetector() {
-  if ("FaceDetector" in window) {
-    try {
-      return new window.FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
-    } catch {
-      return null;
-    }
-  }
-  return null;
+  ctx.fillStyle = isRecognized ? "rgba(125, 249, 199, 0.9)" : "rgba(255, 199, 111, 0.95)";
+  ctx.font = "14px IBM Plex Mono";
+  ctx.fillText(`Motion: ${state.movementLabel}`, x + 8, Math.min(overlay.height - 10, y + height + 20));
 }
 
 async function startCamera() {
@@ -252,10 +360,9 @@ async function startCamera() {
     setStatus(elements.cameraStatus, "Camera ready", "status-ready");
     elements.toggleListening.disabled = !state.recognition;
     elements.saveProfile.disabled = false;
-    state.detector = createFaceDetector();
     detectFaceLoop();
     setWarning(
-      state.detector
+      isFaceDetectionSupported()
         ? "Local-only prototype. Saved memories stay in this browser."
         : "FaceDetector is unavailable in this browser, so the demo uses a center-frame fallback crop."
     );
@@ -285,29 +392,27 @@ async function detectFaceLoop() {
     }
 
     try {
-      if (state.detector) {
-        const faces = await state.detector.detect(elements.video);
-        if (faces.length) {
-          const face = faces[0].boundingBox;
-          state.lastFaceBox = face;
-          state.lastDescriptor = captureFaceDescriptor(face);
-          matchOrCreateActiveProfile();
-        } else {
-          state.lastFaceBox = null;
-          state.lastDescriptor = null;
-          state.activeMatchConfidence = null;
-          state.activeProfileState = "no-face";
-          drawOverlay();
-          renderProfile(null);
-        }
-      } else {
-        const width = elements.video.videoWidth * 0.34;
-        const height = elements.video.videoHeight * 0.46;
-        const x = (elements.video.videoWidth - width) / 2;
-        const y = (elements.video.videoHeight - height) / 2;
-        state.lastFaceBox = { x, y, width, height };
-        state.lastDescriptor = captureFaceDescriptor(state.lastFaceBox);
+      const face = await detectFace(elements.video, {
+        allowFallback: true,
+        sourceWidth: elements.video.videoWidth,
+        sourceHeight: elements.video.videoHeight,
+      });
+
+      if (face) {
+        state.lastFaceBox = face;
+        smoothFaceBox(face);
+        state.lastDescriptor = createFaceFingerprint(elements.video, face, {
+          canvas: elements.faceCapture,
+        });
         matchOrCreateActiveProfile();
+      } else {
+        state.lastFaceBox = null;
+        smoothFaceBox(null);
+        state.lastDescriptor = null;
+        state.activeMatchConfidence = null;
+        state.activeProfileState = "no-face";
+        drawOverlay();
+        renderProfile(null);
       }
     } catch (error) {
       state.activeProfileState = "error";
@@ -321,78 +426,24 @@ async function detectFaceLoop() {
   run();
 }
 
-function captureFaceDescriptor(box) {
-  const captureSize = 24;
-  const canvas = elements.faceCapture;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  canvas.width = captureSize;
-  canvas.height = captureSize;
-
-  ctx.filter = "grayscale(1) contrast(1.1)";
-  ctx.drawImage(
-    elements.video,
-    box.x,
-    box.y,
-    box.width,
-    box.height,
-    0,
-    0,
-    captureSize,
-    captureSize
-  );
-  ctx.filter = "none";
-
-  const { data } = ctx.getImageData(0, 0, captureSize, captureSize);
-  const vector = [];
-  let sum = 0;
-
-  for (let i = 0; i < data.length; i += 4) {
-    const value = data[i] / 255;
-    vector.push(value);
-    sum += value;
-  }
-
-  const avg = sum / vector.length;
-  const centered = vector.map((value) => Number((value - avg).toFixed(4)));
-  const norm = Math.sqrt(centered.reduce((acc, value) => acc + value * value, 0)) || 1;
-
-  return centered.map((value) => Number((value / norm).toFixed(4)));
-}
-
-function descriptorDistance(a, b) {
-  if (!a || !b || a.length !== b.length) return Number.POSITIVE_INFINITY;
-  let sum = 0;
-  for (let i = 0; i < a.length; i += 1) {
-    const delta = a[i] - b[i];
-    sum += delta * delta;
-  }
-  return Math.sqrt(sum / a.length);
-}
-
 function matchOrCreateActiveProfile() {
   if (!state.lastDescriptor) return;
 
-  let bestProfile = null;
-  let bestDistance = Number.POSITIVE_INFINITY;
+  const matchResult = matchFace(state.lastDescriptor, state.profileStore, {
+    threshold: DEFAULT_FACE_MATCH_THRESHOLD,
+  });
 
-  for (const profile of state.profileStore) {
-    const distance = descriptorDistance(state.lastDescriptor, profile.faceDescriptor);
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      bestProfile = profile;
-    }
-  }
-
-  if (bestProfile && bestDistance < FACE_MATCH_THRESHOLD) {
-    bestProfile.lastSeen = Date.now();
-    state.activeProfile = bestProfile;
-    state.activeMatchConfidence = Math.max(0, 1 - bestDistance / FACE_MATCH_THRESHOLD);
+  if (matchResult.matched && matchResult.profile) {
+    matchResult.profile.lastSeen = Date.now();
+    state.activeProfile = matchResult.profile;
+    state.activeMatchConfidence = matchResult.confidence;
     state.activeProfileState = "recognized";
     saveProfiles();
   } else if (
     !state.activeProfile ||
     state.profileStore.some((profile) => profile.id === state.activeProfile.id) ||
-    descriptorDistance(state.lastDescriptor, state.activeProfile.faceDescriptor) >= FACE_MATCH_THRESHOLD
+    descriptorDistance(state.lastDescriptor, state.activeProfile.faceDescriptor) >=
+      DEFAULT_FACE_MATCH_THRESHOLD
   ) {
     state.activeProfile = createBlankProfile();
     state.activeMatchConfidence = null;
@@ -611,6 +662,9 @@ function resetMemory() {
   state.transcript = "";
   state.lastDescriptor = null;
   state.lastFaceBox = null;
+  state.previousFaceBox = null;
+  state.trackedFaceBox = null;
+  state.movementLabel = "still";
   localStorage.removeItem(STORAGE_KEY);
   elements.transcriptOutput.textContent =
     "Press Start Listening and say a few facts like your name, relationship, and something memorable about your last interaction.";
