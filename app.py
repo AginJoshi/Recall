@@ -1,20 +1,20 @@
 import os
+from datetime import datetime
+from typing import List, Optional
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
+from pydantic import BaseModel, Field
+from bson import ObjectId
 
 load_dotenv()
-
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 DB_NAME = os.getenv("MONGO_DB", "recall_demo")
-
 mongo_client = AsyncIOMotorClient(MONGO_URI)
 db = mongo_client[DB_NAME]
-
-app = FastAPI(title="Recall Demo", version="0.0.1")
-
+app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -24,23 +24,83 @@ app.add_middleware(
 )
 
 
+# Pydantic models
+class PersonCreate(BaseModel):
+    name: str
+    relationship: str
+    lastConversation: Optional[str] = None
+    embedding: Optional[list[float]] = None
+
+
+class PersonOut(PersonCreate):
+    id: str = Field(alias="_id")
+    createdAt: Optional[datetime] = None
+    updatedAt: Optional[datetime] = None
+
+    class Config:
+        populate_by_name = True
+
+def to_object_id(id_str: str) -> ObjectId:
+    try:
+        return ObjectId(id_str)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid id")
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
 
-@app.post("/testAddPerson")
-async def testInsertPerson():
-    """Insert one test person; auto-creates the `people` collection."""
-    res = await db.people.insert_one(
-        {
-            "name": "Test Person",
-            "relationship": "Friend",
-            "lastConversation": "Met at the cafe.",
-        }
-    )
-    return {"inserted_id": str(res.inserted_id)}
+@app.post("/people", response_model=PersonOut)
+async def create_person(person: PersonCreate):
+    now = datetime.utcnow()
+    profile = person.model_dump()
+    profile["createdAt"] = now
+    profile["updatedAt"] = now
+    result = await db.people.insert_one(doc)
+    doc["_id"] = str(result.inserted_id)
+    return doc
 
-@app.post("/")
+@app.get("/people", response_model=List[PersonOut])
+async def list_people():
+    profiles = await db.people.find().sort("updatedAt", -1).to_list(length=200)
+    for profile in profiles:
+        # change ObjectKey to String
+        profile["_id"] = str(profile["_id"])
+    return docs
+
+@app.patch("/people/{person_id}", response_model=PersonOut)
+async def update_person(person_id: str, person: PersonCreate):
+    objectID = to_object_id(person_id)
+    update = person.model_dump(exclude_none=True)
+    update["updatedAt"] = datetime.utcnow()
+    result = await db.people.find_one_and_update(
+        {"_id": objectID},
+        {"$set": update},
+        return_document=True,
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Person not found")
+    result["_id"] = str(result["_id"])
+    return result
+
+@app.post("/people/{person_id}/encounter", response_model=PersonOut)
+async def record_encounter(person_id: str, summary: str):
+    objectID = to_object_id(person_id)
+    update = {
+        "lastConversation": summary,
+        "updatedAt": datetime.utcnow(),
+    }
+    result = await db.people.find_one_and_update(
+        {"_id": objectID},
+        {"$set": update},
+        return_document=True,
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Person not found")
+    result["_id"] = str(result["_id"])
+    return result
+
+
 if __name__ == "__main__":
     import asyncio
 
