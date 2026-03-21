@@ -1,121 +1,59 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { useState } from "react";
+import HomePage from "./pages/HomePage";
+import HistoryPage from "./pages/HistoryPage";
 
-function App() {
-  const [count, setCount] = useState(0)
+export default function App() {
+  const [page, setPage] = useState("home");
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+    <div className="min-h-screen bg-[#07090f] text-white font-sans">
+      <Nav page={page} setPage={setPage} />
+      {page === "home" ? <HomePage /> : <HistoryPage />}
+    </div>
+  );
 }
 
-export default App
+function Nav({ page, setPage }) {
+  return (
+    <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-8 py-4 border-b border-white/5 bg-[#07090f]/80 backdrop-blur-xl">
+      <div className="flex items-center gap-3">
+        <div className="relative w-8 h-8">
+          <div className="absolute inset-0 rounded-full border-2 border-cyan-400 animate-ping opacity-30" />
+          <div className="relative w-8 h-8 rounded-full bg-cyan-400/10 border border-cyan-400/60 flex items-center justify-center">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <circle cx="7" cy="5" r="2.5" stroke="#00e5ff" strokeWidth="1.5" />
+              <path d="M2 12c0-2.76 2.24-5 5-5s5 2.24 5 5" stroke="#00e5ff" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </div>
+        </div>
+        <span className="text-sm font-mono font-bold tracking-[0.2em] text-white uppercase">
+          Rec<span className="text-cyan-400">all</span>
+        </span>
+      </div>
+
+      <div className="flex items-center gap-1 bg-white/5 rounded-full p-1 border border-white/10">
+        {[
+          { id: "home", label: "Live Session" },
+          { id: "history", label: "Memory Bank" },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setPage(tab.id)}
+            className={`px-5 py-2 rounded-full text-xs font-mono font-semibold tracking-widest uppercase transition-all duration-300 ${
+              page === tab.id
+                ? "bg-cyan-400 text-[#07090f] shadow-[0_0_20px_rgba(0,229,255,0.4)]"
+                : "text-white/40 hover:text-white/70"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex items-center gap-2">
+        <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+        <span className="text-xs font-mono text-white/30 tracking-widest">SYSTEM ONLINE</span>
+      </div>
+    </nav>
+  );
+}
