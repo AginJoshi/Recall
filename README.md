@@ -55,3 +55,4 @@ I'm building a memory assistant for networking events.
 - Face matching is intentionally lightweight for demo speed and runs entirely in the browser.
 - Stored data is local to the browser and can be cleared with `Reset Memory`.
 - If `FaceDetector` is unavailable, the app falls back to a center-frame face crop so you can still demo the memory flow.
+-..
