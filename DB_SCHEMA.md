@@ -9,8 +9,10 @@ Fields for each entry:
 | field              | type             | notes                                          |
 |--------------------|------------------|------------------------------------------------|
 | `_id`              | ObjectId         | Primary key.                                   |
-| `name`             | string (req)     | Full name.                                     |
+| `name`             | string (req)     | Full name. (defaults to PersonX)               |
 | `relationship`     | string (req)     | ex. son, daughter, friend, etc.                |
+| `occupation`       | string (opt)     | ex. son, daughter, friend, etc.                |
+| `organization`     | string (opt)     | ex. son, daughter, friend, etc.                |
 | `lastConversation` | string (opt)     | Short summary of most recent conversation.     |
 | `embedding`        | array<float>(opt)| Face embedding if matching is implemented.     |
 | `createdAt`        | datetime (opt)   | Use if you need audit; otherwise can omit.     |

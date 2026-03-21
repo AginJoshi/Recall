@@ -23,13 +23,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 # Pydantic models
 class PersonCreate(BaseModel):
     name: str
     relationship: str
     lastConversation: Optional[str] = None
     embedding: Optional[list[float]] = None
+    occupation: Optional[str] = None
+    organization: Optional[str] = None
+
+
+class PersonUpdate(BaseModel):
+    name: Optional[str] = None
+    relationship: Optional[str] = None
+    lastConversation: Optional[str] = None
+    embedding: Optional[list[float]] = None
+    occupation: Optional[str] = None
+    organization: Optional[str] = None
+
+
+class EncounterUpdate(BaseModel):
+    summary: str
 
 
 class PersonOut(PersonCreate):
@@ -56,22 +70,23 @@ async def create_person(person: PersonCreate):
     profile = person.model_dump()
     profile["createdAt"] = now
     profile["updatedAt"] = now
-    result = await db.people.insert_one(doc)
-    doc["_id"] = str(result.inserted_id)
-    return doc
+    result = await db.people.insert_one(profile)
+    profile["_id"] = str(result.inserted_id)
+    return profile
 
 @app.get("/people", response_model=List[PersonOut])
 async def list_people():
     profiles = await db.people.find().sort("updatedAt", -1).to_list(length=200)
     for profile in profiles:
-        # change ObjectKey to String
         profile["_id"] = str(profile["_id"])
-    return docs
+    return profiles
 
 @app.patch("/people/{person_id}", response_model=PersonOut)
-async def update_person(person_id: str, person: PersonCreate):
+async def update_person(person_id: str, person: PersonUpdate):
     objectID = to_object_id(person_id)
     update = person.model_dump(exclude_none=True)
+    if not update:
+        raise HTTPException(status_code=400, detail="No fields to update")
     update["updatedAt"] = datetime.utcnow()
     result = await db.people.find_one_and_update(
         {"_id": objectID},
@@ -83,11 +98,21 @@ async def update_person(person_id: str, person: PersonCreate):
     result["_id"] = str(result["_id"])
     return result
 
+@app.get("/people/{person_id}")
+async def get_person(person_id: str):
+    objectID = to_object_id(person_id)
+    profile = await db.people.findOne({"_id: objectID"})
+    if not profile:
+        raise HTTPException(status_code=404, detail="Person not found")
+    profile["_id"] = str(profile["_id"])
+    return profile
+
+# payload should be a JSON object with fields summary:str
 @app.post("/people/{person_id}/encounter", response_model=PersonOut)
-async def record_encounter(person_id: str, summary: str):
+async def record_encounter(person_id: str, payload: EncounterUpdate):
     objectID = to_object_id(person_id)
     update = {
-        "lastConversation": summary,
+        "lastConversation": payload.summary,
         "updatedAt": datetime.utcnow(),
     }
     result = await db.people.find_one_and_update(
