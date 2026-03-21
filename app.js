@@ -1,6 +1,30 @@
-const STORAGE_KEY = "recallcam-profiles-v1";
+const STORAGE_KEY = "recallcam-profiles-v2";
 const FACE_MATCH_THRESHOLD = 0.18;
 const DETECTION_INTERVAL_MS = 1200;
+
+const RELATIONSHIP_TERMS = [
+  "daughter",
+  "son",
+  "wife",
+  "husband",
+  "mother",
+  "father",
+  "sister",
+  "brother",
+  "granddaughter",
+  "grandson",
+  "friend",
+  "neighbor",
+  "caregiver",
+  "doctor",
+  "nurse",
+  "therapist",
+  "niece",
+  "nephew",
+  "cousin",
+  "aunt",
+  "uncle",
+];
 
 const elements = {
   video: document.getElementById("camera"),
@@ -8,6 +32,7 @@ const elements = {
   faceCapture: document.getElementById("face-capture"),
   cameraStatus: document.getElementById("camera-status"),
   speechStatus: document.getElementById("speech-status"),
+  recognitionState: document.getElementById("recognition-state"),
   profileName: document.getElementById("profile-name"),
   profileSummary: document.getElementById("profile-summary"),
   transcriptOutput: document.getElementById("transcript-output"),
@@ -16,13 +41,13 @@ const elements = {
   toggleListening: document.getElementById("toggle-listening"),
   saveProfile: document.getElementById("save-profile"),
   resetMemory: document.getElementById("reset-memory"),
+  chipRelationship: document.getElementById("chip-relationship"),
+  chipLastInteraction: document.getElementById("chip-last-interaction"),
   factName: document.getElementById("fact-name"),
-  factRole: document.getElementById("fact-role"),
-  factCompany: document.getElementById("fact-company"),
-  factInterests: document.getElementById("fact-interests"),
-  factGoals: document.getElementById("fact-goals"),
+  factRelationship: document.getElementById("fact-relationship"),
+  factLastInteraction: document.getElementById("fact-last-interaction"),
   factLastSeen: document.getElementById("fact-last-seen"),
-  factNotes: document.getElementById("fact-notes"),
+  factNote: document.getElementById("fact-note"),
   knownProfiles: document.getElementById("known-profiles"),
 };
 
@@ -35,21 +60,45 @@ const state = {
   detectTimer: null,
   profileStore: loadProfiles(),
   activeProfile: null,
+  activeMatchConfidence: null,
+  activeProfileState: "idle",
   lastDescriptor: null,
   lastFaceBox: null,
-  facePresent: false,
 };
 
 function loadProfiles() {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
+    if (!Array.isArray(raw)) return [];
+    return raw.map(normalizeProfileRecord).filter(Boolean);
   } catch {
     return [];
   }
 }
 
+function normalizeProfileRecord(profile) {
+  if (!profile || !Array.isArray(profile.faceDescriptor)) return null;
+  return {
+    id: profile.id ?? createId(),
+    name: profile.name ?? "",
+    relationship: profile.relationship ?? profile.role ?? "",
+    lastInteraction: profile.lastInteraction ?? "",
+    note: profile.note ?? profile.notes ?? "",
+    transcript: profile.transcript ?? "",
+    faceDescriptor: profile.faceDescriptor,
+    lastSeen: profile.lastSeen ?? Date.now(),
+  };
+}
+
 function saveProfiles() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state.profileStore));
+}
+
+function createId() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return `profile-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function setStatus(element, text, cls) {
@@ -69,6 +118,29 @@ function formatDate(timestamp) {
   }).format(new Date(timestamp));
 }
 
+function summarizeProfile(profile) {
+  const parts = [];
+  if (profile.relationship) parts.push(profile.relationship);
+  if (profile.lastInteraction) parts.push(profile.lastInteraction);
+  if (profile.note) parts.push(profile.note);
+  return parts.join(" • ") || "No memory cues saved yet.";
+}
+
+function formatRecognitionState() {
+  switch (state.activeProfileState) {
+    case "recognized":
+      return "Recognized person";
+    case "unknown":
+      return "New person detected";
+    case "no-face":
+      return "Camera active, no face";
+    case "error":
+      return "Camera or speech error";
+    default:
+      return "System idle";
+  }
+}
+
 function renderKnownProfiles() {
   const profiles = [...state.profileStore].sort((a, b) => (b.lastSeen ?? 0) - (a.lastSeen ?? 0));
 
@@ -79,11 +151,11 @@ function renderKnownProfiles() {
 
   elements.knownProfiles.innerHTML = profiles
     .map((profile) => {
-      const summary = buildSummary(profile);
       return `
         <article class="known-profile">
           <strong>${escapeHtml(profile.name || "Unknown person")}</strong>
-          <span>${escapeHtml(summary)}</span>
+          <span>${escapeHtml(profile.relationship || "Relationship unknown")}</span>
+          <span>${escapeHtml(profile.lastInteraction || profile.note || "No recent memory cue saved.")}</span>
           <span>Last seen ${escapeHtml(formatDate(profile.lastSeen))}</span>
         </article>
       `;
@@ -99,41 +171,34 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;");
 }
 
-function buildSummary(profile) {
-  const parts = [];
-  if (profile.role) parts.push(profile.role);
-  if (profile.company) parts.push(`at ${profile.company}`);
-  if (profile.interests?.length) parts.push(`likes ${profile.interests.join(", ")}`);
-  if (profile.goals?.length) parts.push(`focused on ${profile.goals.join(", ")}`);
-  if (!parts.length && profile.notes) parts.push(profile.notes);
-  return parts.join(" • ") || "No remembered facts yet.";
-}
-
 function renderProfile(profile) {
+  elements.recognitionState.textContent = formatRecognitionState();
+
   if (!profile) {
-    elements.profileName.textContent = "Waiting for a face...";
+    elements.profileName.textContent = state.activeProfileState === "no-face" ? "No face in frame" : "Waiting for a face...";
     elements.profileSummary.textContent =
-      "When someone steps into frame, their remembered details will appear here.";
+      "When someone steps into frame, RecallCam will show their saved memory cues here.";
+    elements.chipRelationship.textContent = "Relationship: -";
+    elements.chipLastInteraction.textContent = "Last interaction: -";
     elements.factName.textContent = "Unknown";
-    elements.factRole.textContent = "-";
-    elements.factCompany.textContent = "-";
-    elements.factInterests.textContent = "-";
-    elements.factGoals.textContent = "-";
+    elements.factRelationship.textContent = "-";
+    elements.factLastInteraction.textContent = "-";
     elements.factLastSeen.textContent = "-";
-    elements.factNotes.textContent = "No notes yet.";
+    elements.factNote.textContent = "No notes yet.";
     elements.saveProfile.disabled = !state.lastDescriptor;
     return;
   }
 
-  elements.profileName.textContent = profile.name || "Unknown person";
-  elements.profileSummary.textContent = buildSummary(profile);
+  const isRecognized = state.activeProfileState === "recognized";
+  elements.profileName.textContent = isRecognized ? `Recognized: ${profile.name || "Known person"}` : profile.name || "New person detected";
+  elements.profileSummary.textContent = summarizeProfile(profile);
+  elements.chipRelationship.textContent = `Relationship: ${profile.relationship || "-"}`;
+  elements.chipLastInteraction.textContent = `Last interaction: ${profile.lastInteraction || "-"}`;
   elements.factName.textContent = profile.name || "Unknown";
-  elements.factRole.textContent = profile.role || "-";
-  elements.factCompany.textContent = profile.company || "-";
-  elements.factInterests.textContent = profile.interests?.join(", ") || "-";
-  elements.factGoals.textContent = profile.goals?.join(", ") || "-";
+  elements.factRelationship.textContent = profile.relationship || "-";
+  elements.factLastInteraction.textContent = profile.lastInteraction || "-";
   elements.factLastSeen.textContent = formatDate(profile.lastSeen);
-  elements.factNotes.textContent = profile.notes || "No notes yet.";
+  elements.factNote.textContent = profile.note || "No notes yet.";
   elements.saveProfile.disabled = !state.lastDescriptor;
 }
 
@@ -147,15 +212,18 @@ function drawOverlay() {
   if (!state.lastFaceBox) return;
 
   const { x, y, width, height } = state.lastFaceBox;
+  const isRecognized = state.activeProfileState === "recognized";
   ctx.lineWidth = 4;
-  ctx.strokeStyle = "#7df9c7";
+  ctx.strokeStyle = isRecognized ? "#7df9c7" : "#ffc76f";
   ctx.setLineDash([10, 8]);
   ctx.strokeRect(x, y, width, height);
   ctx.setLineDash([]);
 
-  const label = state.activeProfile?.name || "Unrecognized face";
+  const label = isRecognized
+    ? `Recognized${state.activeMatchConfidence ? ` ${(state.activeMatchConfidence * 100).toFixed(0)}%` : ""}`
+    : "New person";
   ctx.fillStyle = "rgba(7, 17, 31, 0.88)";
-  ctx.fillRect(x, Math.max(0, y - 34), Math.max(140, label.length * 10), 28);
+  ctx.fillRect(x, Math.max(0, y - 34), Math.max(170, label.length * 10), 28);
   ctx.fillStyle = "#eff6ff";
   ctx.font = "16px IBM Plex Mono";
   ctx.fillText(label, x + 10, Math.max(18, y - 14));
@@ -169,7 +237,6 @@ function createFaceDetector() {
       return null;
     }
   }
-
   return null;
 }
 
@@ -181,6 +248,7 @@ async function startCamera() {
     });
     elements.video.srcObject = state.stream;
     await elements.video.play();
+    state.activeProfileState = "no-face";
     setStatus(elements.cameraStatus, "Camera ready", "status-ready");
     elements.toggleListening.disabled = !state.recognition;
     elements.saveProfile.disabled = false;
@@ -188,12 +256,15 @@ async function startCamera() {
     detectFaceLoop();
     setWarning(
       state.detector
-        ? ""
-        : "FaceDetector is not available in this browser. The demo can still capture speech, but auto-recognition may be limited."
+        ? "Local-only prototype. Saved memories stay in this browser."
+        : "FaceDetector is unavailable in this browser, so the demo uses a center-frame fallback crop."
     );
+    renderProfile(state.activeProfile);
   } catch (error) {
+    state.activeProfileState = "error";
     setStatus(elements.cameraStatus, "Camera error", "status-error");
     setWarning(error.message || "Unable to access the camera.");
+    renderProfile(state.activeProfile);
   }
 }
 
@@ -218,27 +289,28 @@ async function detectFaceLoop() {
         const faces = await state.detector.detect(elements.video);
         if (faces.length) {
           const face = faces[0].boundingBox;
-          state.facePresent = true;
           state.lastFaceBox = face;
           state.lastDescriptor = captureFaceDescriptor(face);
           matchOrCreateActiveProfile();
         } else {
-          state.facePresent = false;
           state.lastFaceBox = null;
+          state.lastDescriptor = null;
+          state.activeMatchConfidence = null;
+          state.activeProfileState = "no-face";
           drawOverlay();
+          renderProfile(null);
         }
       } else {
-        // Fallback: treat the whole frame center as the face region for demos.
         const width = elements.video.videoWidth * 0.34;
         const height = elements.video.videoHeight * 0.46;
         const x = (elements.video.videoWidth - width) / 2;
         const y = (elements.video.videoHeight - height) / 2;
-        state.facePresent = true;
         state.lastFaceBox = { x, y, width, height };
         state.lastDescriptor = captureFaceDescriptor(state.lastFaceBox);
         matchOrCreateActiveProfile();
       }
     } catch (error) {
+      state.activeProfileState = "error";
       setWarning(`Face detection issue: ${error.message}`);
     }
 
@@ -314,6 +386,8 @@ function matchOrCreateActiveProfile() {
   if (bestProfile && bestDistance < FACE_MATCH_THRESHOLD) {
     bestProfile.lastSeen = Date.now();
     state.activeProfile = bestProfile;
+    state.activeMatchConfidence = Math.max(0, 1 - bestDistance / FACE_MATCH_THRESHOLD);
+    state.activeProfileState = "recognized";
     saveProfiles();
   } else if (
     !state.activeProfile ||
@@ -321,8 +395,11 @@ function matchOrCreateActiveProfile() {
     descriptorDistance(state.lastDescriptor, state.activeProfile.faceDescriptor) >= FACE_MATCH_THRESHOLD
   ) {
     state.activeProfile = createBlankProfile();
+    state.activeMatchConfidence = null;
+    state.activeProfileState = "unknown";
   } else {
     state.activeProfile.faceDescriptor = state.lastDescriptor;
+    state.activeProfileState = "unknown";
   }
 
   renderProfile(state.activeProfile);
@@ -331,13 +408,11 @@ function matchOrCreateActiveProfile() {
 
 function createBlankProfile() {
   return {
-    id: crypto.randomUUID(),
+    id: createId(),
     name: "",
-    role: "",
-    company: "",
-    interests: [],
-    goals: [],
-    notes: "",
+    relationship: "",
+    lastInteraction: "",
+    note: "",
     transcript: "",
     faceDescriptor: state.lastDescriptor,
     lastSeen: Date.now(),
@@ -371,8 +446,10 @@ function createRecognition() {
   };
 
   recognition.onerror = (event) => {
+    state.activeProfileState = "error";
     setStatus(elements.speechStatus, "Speech error", "status-error");
     setWarning(`Speech recognition error: ${event.error}`);
+    renderProfile(state.activeProfile);
   };
 
   recognition.onresult = (event) => {
@@ -393,107 +470,114 @@ function createRecognition() {
 function applyTranscriptToProfile() {
   if (!state.activeProfile) {
     state.activeProfile = createBlankProfile();
+    state.activeProfileState = "unknown";
   }
 
   const extracted = extractFacts(state.transcript);
   const profile = state.activeProfile;
 
   profile.transcript = state.transcript;
-  if (extracted.name) profile.name = extracted.name;
-  if (extracted.role) profile.role = extracted.role;
-  if (extracted.company) profile.company = extracted.company;
-  if (extracted.interests.length) profile.interests = mergeDistinct(profile.interests, extracted.interests);
-  if (extracted.goals.length) profile.goals = mergeDistinct(profile.goals, extracted.goals);
-  if (extracted.notes.length) {
-    profile.notes = mergeNotes(profile.notes, extracted.notes.join(". "));
-  }
+  if (extracted.name && !profile.name) profile.name = extracted.name;
+  if (extracted.relationship && !profile.relationship) profile.relationship = extracted.relationship;
+  if (extracted.lastInteraction) profile.lastInteraction = extracted.lastInteraction;
+  if (extracted.note) profile.note = extracted.note;
   profile.lastSeen = Date.now();
 
   renderProfile(profile);
 }
 
-function mergeDistinct(existing = [], incoming = []) {
-  return [...new Set([...existing, ...incoming].map((item) => item.trim()).filter(Boolean))];
-}
-
-function mergeNotes(existing, incoming) {
-  return [existing, incoming].filter(Boolean).join(" ");
-}
-
 function extractFacts(text) {
   const normalized = text.replace(/\s+/g, " ").trim();
   const lower = normalized.toLowerCase();
-
-  const patterns = {
-    name:
-      /(?:my name is|i am|i'm|this is)\s+([A-Z][a-z]+(?:\s[A-Z][a-z]+){0,2})/,
-    role:
-      /(?:i am|i'm|working as|my role is)\s+(?:an?\s+)?([a-zA-Z\s-]+?)(?:\s+at|\s+who|\s+and|\.|,|$)/i,
-    company:
-      /(?:at|from)\s+([A-Z][A-Za-z0-9&.\- ]{1,40})(?:\.|,|$)/,
-  };
-
-  const interestMatches = Array.from(
-    normalized.matchAll(/(?:i love|i like|i enjoy|i'm into)\s+([^.,]+)/gi)
-  );
-  const goalMatches = Array.from(
-    normalized.matchAll(/(?:i want to|my goal is to|i'm building|i am building)\s+([^.,]+)/gi)
-  );
-
-  const notes = [];
   const sentences = normalized
     .split(/[.!?]/)
     .map((sentence) => sentence.trim())
     .filter(Boolean);
 
-  for (const sentence of sentences) {
-    if (
-      !/(my name is|i am|i'm|this is|i love|i like|i enjoy|i'm into|my goal is to|i want to|i'm building|i am building)/i.test(
-        sentence
-      )
-    ) {
-      notes.push(sentence);
+  const namePatterns = [
+    /(?:my name is|this is)\s+([A-Z][a-z]+(?:\s[A-Z][a-z]+){0,2})/,
+    /i(?:'m| am)\s+([A-Z][a-z]+(?:\s[A-Z][a-z]+){0,2})/,
+    new RegExp(`i(?:'m| am)\\s+(?:your\\s+)?(?:${RELATIONSHIP_TERMS.join("|")})\\s+([A-Z][a-z]+(?:\\s[A-Z][a-z]+){0,2})`, "i"),
+  ];
+
+  let name = "";
+  for (const pattern of namePatterns) {
+    const match = normalized.match(pattern);
+    if (match?.[1]) {
+      name = match[1].trim();
+      break;
     }
   }
 
-  const name = normalized.match(patterns.name)?.[1] ?? "";
-  let role = normalized.match(patterns.role)?.[1] ?? "";
-  const company = normalized.match(patterns.company)?.[1] ?? "";
-
-  role = role
-    .replace(/^(my name is|i am|i'm)\s+/i, "")
-    .replace(/\s{2,}/g, " ")
-    .trim();
-
-  if (role && role.toLowerCase() === name.toLowerCase()) {
-    role = "";
+  let relationship = "";
+  const relationshipPattern = new RegExp(
+    `(?:i(?:'m| am)|this is)\\s+(?:your\\s+)?(${RELATIONSHIP_TERMS.join("|")})\\b`,
+    "i"
+  );
+  const relationshipMatch = normalized.match(relationshipPattern);
+  if (relationshipMatch?.[1]) {
+    relationship = capitalizeWords(relationshipMatch[1]);
+  } else {
+    for (const term of RELATIONSHIP_TERMS) {
+      if (lower.includes(`your ${term}`) || lower.includes(`the ${term}`)) {
+        relationship = capitalizeWords(term);
+        break;
+      }
+    }
   }
 
-  const interests = interestMatches
-    .flatMap((match) => splitFacts(match[1]))
-    .filter((item) => !item.startsWith("to "));
-  const goals = goalMatches.flatMap((match) => splitFacts(match[1]));
+  let lastInteraction = "";
+  for (const sentence of sentences) {
+    if (
+      /(we|i)\s+(had|met|visited|spoke|talked|called|saw|went|ate|came|spent)|\b(yesterday|today|last night|last week|this morning|on sunday|on monday|on tuesday|on wednesday|on thursday|on friday|on saturday)\b/i.test(
+        sentence
+      )
+    ) {
+      lastInteraction = sentence;
+      break;
+    }
+  }
 
-  if (!name && lower.includes("my name")) {
-    notes.unshift(normalized);
+  let note = "";
+  for (const sentence of sentences) {
+    if (sentence === lastInteraction) continue;
+    if (
+      /(i visit|i come by|i brought|i bring|i help|i take care|i live|i love|i like|remember|favorite|medication|appointment|every sunday|every week)/i.test(
+        sentence
+      )
+    ) {
+      note = sentence;
+      break;
+    }
+  }
+
+  if (!note) {
+    const leftover = sentences.find(
+      (sentence) =>
+        sentence !== lastInteraction &&
+        !relationshipPattern.test(sentence) &&
+        !/my name is|this is|i'm|i am/i.test(sentence)
+    );
+    note = leftover || "";
   }
 
   return {
-    name,
-    role,
-    company,
-    interests,
-    goals,
-    notes,
+    name: cleanFact(name),
+    relationship: cleanFact(relationship),
+    lastInteraction: cleanFact(lastInteraction),
+    note: cleanFact(note),
   };
 }
 
-function splitFacts(value) {
-  return value
-    .split(/\band\b|,/i)
-    .map((item) => item.replace(/^to\s+/i, "").trim())
-    .filter(Boolean)
-    .slice(0, 4);
+function cleanFact(value) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .replace(/^[,.\s]+|[,.\s]+$/g, "")
+    .slice(0, 120);
+}
+
+function capitalizeWords(value) {
+  return value.replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function persistActiveProfile() {
@@ -502,17 +586,18 @@ function persistActiveProfile() {
   const profile = state.activeProfile;
   profile.faceDescriptor = state.lastDescriptor;
   profile.lastSeen = Date.now();
+  if (!profile.name) {
+    profile.name = `Person ${state.profileStore.length + 1}`;
+  }
 
   const existingIndex = state.profileStore.findIndex((item) => item.id === profile.id);
   if (existingIndex >= 0) {
     state.profileStore[existingIndex] = profile;
   } else {
-    if (!profile.name) {
-      profile.name = `Guest ${state.profileStore.length + 1}`;
-    }
     state.profileStore.push(profile);
   }
 
+  state.activeProfileState = "recognized";
   saveProfiles();
   renderProfile(profile);
   renderKnownProfiles();
@@ -521,14 +606,17 @@ function persistActiveProfile() {
 function resetMemory() {
   state.profileStore = [];
   state.activeProfile = null;
+  state.activeMatchConfidence = null;
+  state.activeProfileState = state.stream ? "no-face" : "idle";
   state.transcript = "";
   state.lastDescriptor = null;
   state.lastFaceBox = null;
   localStorage.removeItem(STORAGE_KEY);
   elements.transcriptOutput.textContent =
-    "Press Start Listening and say a few facts like your name, role, interests, or project goals.";
+    "Press Start Listening and say a few facts like your name, relationship, and something memorable about your last interaction.";
   renderProfile(null);
   renderKnownProfiles();
+  drawOverlay();
 }
 
 function toggleListening() {

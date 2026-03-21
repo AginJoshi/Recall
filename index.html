@@ -32,14 +32,18 @@
           <canvas id="face-capture" class="hidden-canvas"></canvas>
 
           <div class="overlay-panel top-left">
-            <p class="panel-label">Live Match</p>
+            <p id="recognition-state" class="panel-label">System idle</p>
             <h2 id="profile-name">Waiting for a face...</h2>
             <p id="profile-summary">When someone steps into frame, their remembered details will appear here.</p>
+            <div class="memory-chips">
+              <span id="chip-relationship" class="memory-chip">Relationship: -</span>
+              <span id="chip-last-interaction" class="memory-chip">Last interaction: -</span>
+            </div>
           </div>
 
           <div class="overlay-panel bottom-left transcript-panel">
             <p class="panel-label">Live Transcript</p>
-            <p id="transcript-output">Press Start Listening and say a few facts like your name, role, interests, or project goals.</p>
+            <p id="transcript-output">Press Start Listening and say a few facts like your name, relationship, and something memorable about your last interaction.</p>
           </div>
         </div>
 
@@ -71,20 +75,12 @@
               <span id="fact-name">Unknown</span>
             </div>
             <div>
-              <span class="fact-label">Role</span>
-              <span id="fact-role">-</span>
+              <span class="fact-label">Relationship</span>
+              <span id="fact-relationship">-</span>
             </div>
             <div>
-              <span class="fact-label">Company</span>
-              <span id="fact-company">-</span>
-            </div>
-            <div>
-              <span class="fact-label">Interests</span>
-              <span id="fact-interests">-</span>
-            </div>
-            <div>
-              <span class="fact-label">Goals</span>
-              <span id="fact-goals">-</span>
+              <span class="fact-label">Last Interaction</span>
+              <span id="fact-last-interaction">-</span>
             </div>
             <div>
               <span class="fact-label">Last Seen</span>
@@ -92,8 +88,8 @@
             </div>
           </div>
           <div class="notes-block">
-            <span class="fact-label">Notes</span>
-            <p id="fact-notes">No notes yet.</p>
+            <span class="fact-label">Helpful Note</span>
+            <p id="fact-note">No notes yet.</p>
           </div>
         </section>
 
