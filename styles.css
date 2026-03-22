@@ -32,7 +32,6 @@ body {
 
 button, input, textarea { font: inherit; }
 
-/* ── Layout ── */
 .app-shell {
   display: grid;
   grid-template-columns: minmax(0, 1.7fr) minmax(300px, 0.85fr);
@@ -52,7 +51,6 @@ button, input, textarea { font: inherit; }
 
 .camera-stage { padding: 20px; }
 
-/* ── Stage Header ── */
 .stage-header,
 .memory-header,
 .control-bar {
@@ -89,7 +87,6 @@ button, input, textarea { font: inherit; }
   letter-spacing: -0.01em;
 }
 
-/* ── Status Pills ── */
 .status-cluster {
   display: flex;
   gap: 8px;
@@ -129,7 +126,6 @@ button, input, textarea { font: inherit; }
   50% { opacity: 0.6; }
 }
 
-/* ── Camera Frame ── */
 .camera-frame {
   position: relative;
   margin-top: 16px;
@@ -141,15 +137,12 @@ button, input, textarea { font: inherit; }
   box-shadow: 0 0 40px rgba(0,229,255,0.06), inset 0 0 60px rgba(0,0,0,0.4);
 }
 
-/* Scan line effect */
 .camera-frame::after {
   content: '';
   position: absolute;
   inset: 0;
   background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 2px,
+    0deg, transparent, transparent 2px,
     rgba(0, 229, 255, 0.015) 2px,
     rgba(0, 229, 255, 0.015) 4px
   );
@@ -167,7 +160,6 @@ button, input, textarea { font: inherit; }
 
 .hidden-canvas { display: none; }
 
-/* ── Face HUD ── */
 .face-hud {
   position: absolute;
   top: 0;
@@ -206,7 +198,6 @@ button, input, textarea { font: inherit; }
   margin-top: 10px;
 }
 
-/* ── Overlay Panels ── */
 .overlay-panel {
   position: absolute;
   max-width: min(360px, 44%);
@@ -236,7 +227,6 @@ button, input, textarea { font: inherit; }
   max-width: unset;
 }
 
-/* ── Labels & Chips ── */
 .panel-label,
 .card-label,
 .fact-label {
@@ -261,7 +251,6 @@ button, input, textarea { font: inherit; }
   letter-spacing: 0.04em;
 }
 
-/* ── Control Bar ── */
 .control-bar {
   margin-top: 18px;
   flex-wrap: wrap;
@@ -287,9 +276,7 @@ button:hover:not(:disabled) {
   box-shadow: 0 0 36px rgba(0, 229, 255, 0.45);
 }
 
-button:active:not(:disabled) {
-  transform: translateY(0);
-}
+button:active:not(:disabled) { transform: translateY(0); }
 
 button:disabled {
   opacity: 0.3;
@@ -319,7 +306,6 @@ button:disabled {
   letter-spacing: 0.05em;
 }
 
-/* ── Memory Panel ── */
 .memory-panel {
   padding: 22px;
   display: flex;
@@ -341,10 +327,7 @@ button:disabled {
   border: 1px solid rgba(255,255,255,0.06);
 }
 
-.memory-card .card-label {
-  margin-bottom: 2px;
-  display: block;
-}
+.memory-card .card-label { margin-bottom: 2px; display: block; }
 
 .fact-grid {
   display: grid;
@@ -406,12 +389,15 @@ button:disabled {
   line-height: 1.5;
 }
 
-/* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(0,229,255,0.15); border-radius: 2px; }
 
-/* ── Responsive ── */
+@keyframes flashOut {
+  from { opacity: 0.7; }
+  to   { opacity: 0; }
+}
+
 @media (max-width: 1100px) {
   .app-shell { grid-template-columns: 1fr; }
   .overlay-panel { max-width: min(400px, calc(100% - 32px)); }

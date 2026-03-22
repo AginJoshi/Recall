@@ -11,27 +11,9 @@ const DETECTION_INTERVAL_MS = 280;
 const TRACKING_SMOOTHING = 0.45;
 
 const RELATIONSHIP_TERMS = [
-  "daughter",
-  "son",
-  "wife",
-  "husband",
-  "mother",
-  "father",
-  "sister",
-  "brother",
-  "granddaughter",
-  "grandson",
-  "friend",
-  "neighbor",
-  "caregiver",
-  "doctor",
-  "nurse",
-  "therapist",
-  "niece",
-  "nephew",
-  "cousin",
-  "aunt",
-  "uncle",
+  "daughter", "son", "wife", "husband", "mother", "father", "sister", "brother",
+  "granddaughter", "grandson", "friend", "neighbor", "caregiver", "doctor", "nurse",
+  "therapist", "niece", "nephew", "cousin", "aunt", "uncle",
 ];
 
 const elements = {
@@ -104,6 +86,7 @@ function normalizeProfileRecord(profile) {
     transcript: profile.transcript ?? "",
     faceDescriptor: profile.faceDescriptor,
     lastSeen: profile.lastSeen ?? Date.now(),
+    snapshot: profile.snapshot ?? null,
   };
 }
 
@@ -112,9 +95,7 @@ function saveProfiles() {
 }
 
 function createId() {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
   return `profile-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
@@ -129,10 +110,7 @@ function setWarning(message = "") {
 
 function formatDate(timestamp) {
   if (!timestamp) return "-";
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(timestamp));
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(timestamp));
 }
 
 function summarizeProfile(profile) {
@@ -145,39 +123,29 @@ function summarizeProfile(profile) {
 
 function formatRecognitionState() {
   switch (state.activeProfileState) {
-    case "recognized":
-      return "Recognized person";
-    case "unknown":
-      return "New person detected";
-    case "no-face":
-      return "Camera active, no face";
-    case "error":
-      return "Camera or speech error";
-    default:
-      return "System idle";
+    case "recognized": return "Recognized person";
+    case "unknown": return "New person detected";
+    case "no-face": return "Camera active, no face";
+    case "error": return "Camera or speech error";
+    default: return "System idle";
   }
 }
 
 function renderKnownProfiles() {
   const profiles = [...state.profileStore].sort((a, b) => (b.lastSeen ?? 0) - (a.lastSeen ?? 0));
-
   if (!profiles.length) {
     elements.knownProfiles.innerHTML = '<p class="empty-state">No profiles saved yet.</p>';
     return;
   }
-
-  elements.knownProfiles.innerHTML = profiles
-    .map((profile) => {
-      return `
-        <article class="known-profile">
-          <strong>${escapeHtml(profile.name || "Unknown person")}</strong>
-          <span>${escapeHtml(profile.relationship || "Relationship unknown")}</span>
-          <span>${escapeHtml(profile.lastInteraction || profile.note || "No recent memory cue saved.")}</span>
-          <span>Last seen ${escapeHtml(formatDate(profile.lastSeen))}</span>
-        </article>
-      `;
-    })
-    .join("");
+  elements.knownProfiles.innerHTML = profiles.map((profile) => `
+    <article class="known-profile">
+      ${profile.snapshot ? `<img src="${profile.snapshot}" style="width:100%;border-radius:10px;margin-bottom:8px;object-fit:contain;background:#040608;aspect-ratio:4/3;" />` : ""}
+      <strong>${escapeHtml(profile.name || "Unknown person")}</strong>
+      <span>${escapeHtml(profile.relationship || "Relationship unknown")}</span>
+      <span>${escapeHtml(profile.lastInteraction || profile.note || "No recent memory cue saved.")}</span>
+      <span>Last seen ${escapeHtml(formatDate(profile.lastSeen))}</span>
+    </article>
+  `).join("");
 }
 
 function escapeHtml(value) {
@@ -191,11 +159,9 @@ function escapeHtml(value) {
 function renderProfile(profile) {
   elements.recognitionState.textContent = formatRecognitionState();
   renderFaceHud(profile);
-
   if (!profile) {
     elements.profileName.textContent = state.activeProfileState === "no-face" ? "No face in frame" : "Waiting for a face...";
-    elements.profileSummary.textContent =
-      "When someone steps into frame, RecallCam will show their saved memory cues here.";
+    elements.profileSummary.textContent = "When someone steps into frame, RecallCam will show their saved memory cues here.";
     elements.chipRelationship.textContent = "Relationship: -";
     elements.chipLastInteraction.textContent = "Last interaction: -";
     elements.factName.textContent = "Unknown";
@@ -206,7 +172,6 @@ function renderProfile(profile) {
     elements.saveProfile.disabled = !state.lastDescriptor;
     return;
   }
-
   const isRecognized = state.activeProfileState === "recognized";
   elements.profileName.textContent = isRecognized ? `Recognized: ${profile.name || "Known person"}` : profile.name || "New person detected";
   elements.profileSummary.textContent = summarizeProfile(profile);
@@ -233,15 +198,10 @@ function renderFaceHud(profile) {
     elements.hudConfidence.textContent = "Confidence: -";
     return;
   }
-
   hud.classList.remove("face-hud-hidden");
   hud.classList.add("face-hud-visible");
-  elements.hudState.textContent =
-    state.activeProfileState === "recognized" ? "Tracking recognized face" : "Tracking new face";
-  elements.hudName.textContent =
-    state.activeProfileState === "recognized"
-      ? profile?.name || "Recognized person"
-      : profile?.name || "New person detected";
+  elements.hudState.textContent = state.activeProfileState === "recognized" ? "Tracking recognized face" : "Tracking new face";
+  elements.hudName.textContent = state.activeProfileState === "recognized" ? profile?.name || "Recognized person" : profile?.name || "New person detected";
   elements.hudRelationship.textContent = `Relationship: ${profile?.relationship || "-"}`;
   elements.hudNote.textContent = `Helpful note: ${profile?.note || profile?.lastInteraction || "-"}`;
   elements.hudMovement.textContent = `Movement: ${state.movementLabel}`;
@@ -249,21 +209,16 @@ function renderFaceHud(profile) {
     state.activeProfileState === "recognized" && state.activeMatchConfidence !== null
       ? `Confidence: ${(state.activeMatchConfidence * 100).toFixed(0)}%`
       : "Confidence: low / new";
-
   positionFaceHud(state.trackedFaceBox);
 }
 
 function positionFaceHud(box) {
   const frame = elements.video.parentElement;
   if (!frame || !box || !elements.video.videoWidth || !elements.video.videoHeight) return;
-
   const scaleX = frame.clientWidth / elements.video.videoWidth;
   const scaleY = frame.clientHeight / elements.video.videoHeight;
   const hudWidth = elements.faceHud.offsetWidth || 280;
-  const left = Math.min(
-    Math.max(12, box.x * scaleX),
-    Math.max(12, frame.clientWidth - hudWidth - 12)
-  );
+  const left = Math.min(Math.max(12, box.x * scaleX), Math.max(12, frame.clientWidth - hudWidth - 12));
   const top = Math.max(12, box.y * scaleY + box.height * scaleY + 14);
   const boundedTop = Math.min(top, Math.max(12, frame.clientHeight - 140));
   elements.faceHud.style.transform = `translate3d(${left}px, ${boundedTop}px, 0)`;
@@ -276,25 +231,18 @@ function smoothFaceBox(nextBox) {
     state.movementLabel = "still";
     return;
   }
-
   if (!state.trackedFaceBox) {
     state.previousFaceBox = nextBox;
     state.trackedFaceBox = { ...nextBox };
     state.movementLabel = "arrived";
     return;
   }
-
   const smoothed = {
     x: state.trackedFaceBox.x + (nextBox.x - state.trackedFaceBox.x) * TRACKING_SMOOTHING,
     y: state.trackedFaceBox.y + (nextBox.y - state.trackedFaceBox.y) * TRACKING_SMOOTHING,
-    width:
-      state.trackedFaceBox.width +
-      (nextBox.width - state.trackedFaceBox.width) * TRACKING_SMOOTHING,
-    height:
-      state.trackedFaceBox.height +
-      (nextBox.height - state.trackedFaceBox.height) * TRACKING_SMOOTHING,
+    width: state.trackedFaceBox.width + (nextBox.width - state.trackedFaceBox.width) * TRACKING_SMOOTHING,
+    height: state.trackedFaceBox.height + (nextBox.height - state.trackedFaceBox.height) * TRACKING_SMOOTHING,
   };
-
   const previousCenter = getBoxCenter(state.trackedFaceBox);
   const nextCenter = getBoxCenter(nextBox);
   state.previousFaceBox = state.trackedFaceBox;
@@ -303,10 +251,7 @@ function smoothFaceBox(nextBox) {
 }
 
 function getBoxCenter(box) {
-  return {
-    x: box.x + box.width / 2,
-    y: box.y + box.height / 2,
-  };
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 }
 
 function getMovementLabel(deltaX, deltaY) {
@@ -323,28 +268,24 @@ function drawOverlay() {
   overlay.width = video.videoWidth || overlay.clientWidth;
   overlay.height = video.videoHeight || overlay.clientHeight;
   ctx.clearRect(0, 0, overlay.width, overlay.height);
-
   if (!state.trackedFaceBox) return;
-
   const { x, y, width, height } = state.trackedFaceBox;
   const isRecognized = state.activeProfileState === "recognized";
   ctx.lineWidth = 4;
-  ctx.strokeStyle = isRecognized ? "#7df9c7" : "#ffc76f";
+  ctx.strokeStyle = isRecognized ? "#00e5ff" : "#ffb347";
   ctx.setLineDash([10, 8]);
   ctx.strokeRect(x, y, width, height);
   ctx.setLineDash([]);
-
   const label = isRecognized
     ? `Recognized${state.activeMatchConfidence ? ` ${(state.activeMatchConfidence * 100).toFixed(0)}%` : ""}`
     : "New person";
-  ctx.fillStyle = "rgba(7, 17, 31, 0.88)";
+  ctx.fillStyle = "rgba(4, 8, 16, 0.88)";
   ctx.fillRect(x, Math.max(0, y - 34), Math.max(170, label.length * 10), 28);
-  ctx.fillStyle = "#eff6ff";
-  ctx.font = "16px IBM Plex Mono";
+  ctx.fillStyle = "#e8f0ff";
+  ctx.font = "16px JetBrains Mono";
   ctx.fillText(label, x + 10, Math.max(18, y - 14));
-
-  ctx.fillStyle = isRecognized ? "rgba(125, 249, 199, 0.9)" : "rgba(255, 199, 111, 0.95)";
-  ctx.font = "14px IBM Plex Mono";
+  ctx.fillStyle = isRecognized ? "rgba(0, 229, 255, 0.9)" : "rgba(255, 179, 71, 0.95)";
+  ctx.font = "14px JetBrains Mono";
   ctx.fillText(`Motion: ${state.movementLabel}`, x + 8, Math.min(overlay.height - 10, y + height + 20));
 }
 
@@ -384,26 +325,21 @@ function stopDetectionLoop() {
 
 async function detectFaceLoop() {
   stopDetectionLoop();
-
   const run = async () => {
     if (!state.stream || elements.video.readyState < 2) {
       state.detectTimer = setTimeout(run, DETECTION_INTERVAL_MS);
       return;
     }
-
     try {
       const face = await detectFace(elements.video, {
         allowFallback: true,
         sourceWidth: elements.video.videoWidth,
         sourceHeight: elements.video.videoHeight,
       });
-
       if (face) {
         state.lastFaceBox = face;
         smoothFaceBox(face);
-        state.lastDescriptor = createFaceFingerprint(elements.video, face, {
-          canvas: elements.faceCapture,
-        });
+        state.lastDescriptor = createFaceFingerprint(elements.video, face, { canvas: elements.faceCapture });
         matchOrCreateActiveProfile();
       } else {
         state.lastFaceBox = null;
@@ -418,21 +354,15 @@ async function detectFaceLoop() {
       state.activeProfileState = "error";
       setWarning(`Face detection issue: ${error.message}`);
     }
-
     drawOverlay();
     state.detectTimer = setTimeout(run, DETECTION_INTERVAL_MS);
   };
-
   run();
 }
 
 function matchOrCreateActiveProfile() {
   if (!state.lastDescriptor) return;
-
-  const matchResult = matchFace(state.lastDescriptor, state.profileStore, {
-    threshold: DEFAULT_FACE_MATCH_THRESHOLD,
-  });
-
+  const matchResult = matchFace(state.lastDescriptor, state.profileStore, { threshold: DEFAULT_FACE_MATCH_THRESHOLD });
   if (matchResult.matched && matchResult.profile) {
     matchResult.profile.lastSeen = Date.now();
     state.activeProfile = matchResult.profile;
@@ -442,8 +372,7 @@ function matchOrCreateActiveProfile() {
   } else if (
     !state.activeProfile ||
     state.profileStore.some((profile) => profile.id === state.activeProfile.id) ||
-    descriptorDistance(state.lastDescriptor, state.activeProfile.faceDescriptor) >=
-      DEFAULT_FACE_MATCH_THRESHOLD
+    descriptorDistance(state.lastDescriptor, state.activeProfile.faceDescriptor) >= DEFAULT_FACE_MATCH_THRESHOLD
   ) {
     state.activeProfile = createBlankProfile();
     state.activeMatchConfidence = null;
@@ -452,7 +381,6 @@ function matchOrCreateActiveProfile() {
     state.activeProfile.faceDescriptor = state.lastDescriptor;
     state.activeProfileState = "unknown";
   }
-
   renderProfile(state.activeProfile);
   renderKnownProfiles();
 }
@@ -467,54 +395,46 @@ function createBlankProfile() {
     transcript: "",
     faceDescriptor: state.lastDescriptor,
     lastSeen: Date.now(),
+    snapshot: null,
   };
 }
 
 function createRecognition() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
-    setWarning(
-      "SpeechRecognition is not available in this browser. Try Chrome for the full voice demo."
-    );
+    setWarning("SpeechRecognition is not available in this browser. Try Chrome for the full voice demo.");
     return null;
   }
-
   const recognition = new SpeechRecognition();
   recognition.lang = "en-US";
   recognition.continuous = true;
   recognition.interimResults = true;
-
   recognition.onstart = () => {
     state.isListening = true;
     setStatus(elements.speechStatus, "Listening live", "status-active");
     elements.toggleListening.textContent = "Stop Listening";
   };
-
   recognition.onend = () => {
     state.isListening = false;
     setStatus(elements.speechStatus, "Speech idle", "status-waiting");
     elements.toggleListening.textContent = "Start Listening";
   };
-
   recognition.onerror = (event) => {
     state.activeProfileState = "error";
     setStatus(elements.speechStatus, "Speech error", "status-error");
     setWarning(`Speech recognition error: ${event.error}`);
     renderProfile(state.activeProfile);
   };
-
   recognition.onresult = (event) => {
     let transcript = "";
     for (let i = 0; i < event.results.length; i += 1) {
       transcript += event.results[i][0].transcript;
       if (!event.results[i].isFinal) transcript += " ";
     }
-
     state.transcript = transcript.trim();
     elements.transcriptOutput.textContent = state.transcript || "Listening...";
     applyTranscriptToProfile();
   };
-
   return recognition;
 }
 
@@ -523,48 +443,33 @@ function applyTranscriptToProfile() {
     state.activeProfile = createBlankProfile();
     state.activeProfileState = "unknown";
   }
-
   const extracted = extractFacts(state.transcript);
   const profile = state.activeProfile;
-
   profile.transcript = state.transcript;
   if (extracted.name && !profile.name) profile.name = extracted.name;
   if (extracted.relationship && !profile.relationship) profile.relationship = extracted.relationship;
   if (extracted.lastInteraction) profile.lastInteraction = extracted.lastInteraction;
   if (extracted.note) profile.note = extracted.note;
   profile.lastSeen = Date.now();
-
   renderProfile(profile);
 }
 
 function extractFacts(text) {
   const normalized = text.replace(/\s+/g, " ").trim();
   const lower = normalized.toLowerCase();
-  const sentences = normalized
-    .split(/[.!?]/)
-    .map((sentence) => sentence.trim())
-    .filter(Boolean);
-
+  const sentences = normalized.split(/[.!?]/).map((s) => s.trim()).filter(Boolean);
   const namePatterns = [
     /(?:my name is|this is)\s+([A-Z][a-z]+(?:\s[A-Z][a-z]+){0,2})/,
     /i(?:'m| am)\s+([A-Z][a-z]+(?:\s[A-Z][a-z]+){0,2})/,
     new RegExp(`i(?:'m| am)\\s+(?:your\\s+)?(?:${RELATIONSHIP_TERMS.join("|")})\\s+([A-Z][a-z]+(?:\\s[A-Z][a-z]+){0,2})`, "i"),
   ];
-
   let name = "";
   for (const pattern of namePatterns) {
     const match = normalized.match(pattern);
-    if (match?.[1]) {
-      name = match[1].trim();
-      break;
-    }
+    if (match?.[1]) { name = match[1].trim(); break; }
   }
-
   let relationship = "";
-  const relationshipPattern = new RegExp(
-    `(?:i(?:'m| am)|this is)\\s+(?:your\\s+)?(${RELATIONSHIP_TERMS.join("|")})\\b`,
-    "i"
-  );
+  const relationshipPattern = new RegExp(`(?:i(?:'m| am)|this is)\\s+(?:your\\s+)?(${RELATIONSHIP_TERMS.join("|")})\\b`, "i");
   const relationshipMatch = normalized.match(relationshipPattern);
   if (relationshipMatch?.[1]) {
     relationship = capitalizeWords(relationshipMatch[1]);
@@ -576,42 +481,25 @@ function extractFacts(text) {
       }
     }
   }
-
   let lastInteraction = "";
   for (const sentence of sentences) {
-    if (
-      /(we|i)\s+(had|met|visited|spoke|talked|called|saw|went|ate|came|spent)|\b(yesterday|today|last night|last week|this morning|on sunday|on monday|on tuesday|on wednesday|on thursday|on friday|on saturday)\b/i.test(
-        sentence
-      )
-    ) {
+    if (/(we|i)\s+(had|met|visited|spoke|talked|called|saw|went|ate|came|spent)|\b(yesterday|today|last night|last week|this morning|on sunday|on monday|on tuesday|on wednesday|on thursday|on friday|on saturday)\b/i.test(sentence)) {
       lastInteraction = sentence;
       break;
     }
   }
-
   let note = "";
   for (const sentence of sentences) {
     if (sentence === lastInteraction) continue;
-    if (
-      /(i visit|i come by|i brought|i bring|i help|i take care|i live|i love|i like|remember|favorite|medication|appointment|every sunday|every week)/i.test(
-        sentence
-      )
-    ) {
+    if (/(i visit|i come by|i brought|i bring|i help|i take care|i live|i love|i like|remember|favorite|medication|appointment|every sunday|every week)/i.test(sentence)) {
       note = sentence;
       break;
     }
   }
-
   if (!note) {
-    const leftover = sentences.find(
-      (sentence) =>
-        sentence !== lastInteraction &&
-        !relationshipPattern.test(sentence) &&
-        !/my name is|this is|i'm|i am/i.test(sentence)
-    );
+    const leftover = sentences.find((s) => s !== lastInteraction && !relationshipPattern.test(s) && !/my name is|this is|i'm|i am/i.test(s));
     note = leftover || "";
   }
-
   return {
     name: cleanFact(name),
     relationship: cleanFact(relationship),
@@ -621,10 +509,7 @@ function extractFacts(text) {
 }
 
 function cleanFact(value) {
-  return String(value || "")
-    .replace(/\s+/g, " ")
-    .replace(/^[,.\s]+|[,.\s]+$/g, "")
-    .slice(0, 120);
+  return String(value || "").replace(/\s+/g, " ").replace(/^[,.\s]+|[,.\s]+$/g, "").slice(0, 120);
 }
 
 function capitalizeWords(value) {
@@ -641,6 +526,14 @@ function persistActiveProfile() {
     profile.name = `Person ${state.profileStore.length + 1}`;
   }
 
+  // ── Snap a picture of the current video frame ──
+  const snapCanvas = document.createElement("canvas");
+  snapCanvas.width = elements.video.videoWidth;
+  snapCanvas.height = elements.video.videoHeight;
+  const snapCtx = snapCanvas.getContext("2d");
+  snapCtx.drawImage(elements.video, 0, 0);
+  profile.snapshot = snapCanvas.toDataURL("image/jpeg", 0.8);
+
   const existingIndex = state.profileStore.findIndex((item) => item.id === profile.id);
   if (existingIndex >= 0) {
     state.profileStore[existingIndex] = profile;
@@ -652,6 +545,17 @@ function persistActiveProfile() {
   saveProfiles();
   renderProfile(profile);
   renderKnownProfiles();
+
+  // ── Flash effect to confirm snapshot ──
+  const frame = elements.video.parentElement;
+  const flash = document.createElement("div");
+  flash.style.cssText = `
+    position: absolute; inset: 0; background: white;
+    opacity: 0.7; z-index: 10; border-radius: 20px;
+    animation: flashOut 0.4s ease-out forwards; pointer-events: none;
+  `;
+  frame.appendChild(flash);
+  setTimeout(() => flash.remove(), 400);
 }
 
 function resetMemory() {
@@ -666,8 +570,7 @@ function resetMemory() {
   state.trackedFaceBox = null;
   state.movementLabel = "still";
   localStorage.removeItem(STORAGE_KEY);
-  elements.transcriptOutput.textContent =
-    "Press Start Listening and say a few facts like your name, relationship, and something memorable about your last interaction.";
+  elements.transcriptOutput.textContent = "Press Start Listening and say a few facts like your name, relationship, and something memorable about your last interaction.";
   renderProfile(null);
   renderKnownProfiles();
   drawOverlay();
@@ -675,12 +578,7 @@ function resetMemory() {
 
 function toggleListening() {
   if (!state.recognition) return;
-
-  if (state.isListening) {
-    state.recognition.stop();
-    return;
-  }
-
+  if (state.isListening) { state.recognition.stop(); return; }
   state.recognition.start();
 }
 
